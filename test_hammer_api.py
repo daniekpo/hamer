@@ -31,8 +31,9 @@ def test_health_check(base_url: str = "http://localhost:8000"):
         return False
 
 
-def test_directory_endpoint(base_url: str = "http://localhost:8000",
-                          image_dir: str = "./hamer/example_data"):
+def test_directory_endpoint(
+    base_url: str = "http://localhost:8000", image_dir: str = "example_data"
+):
     """Test the directory prediction endpoint"""
     print("📁 Testing directory endpoint...")
 
@@ -45,7 +46,7 @@ def test_directory_endpoint(base_url: str = "http://localhost:8000",
         "image_directory": image_dir,
         "file_extensions": ["*.jpg", "*.png", "*.jpeg"],
         "rescale_factor": 2.0,
-        "body_detector": "vitdet"
+        "body_detector": "vitdet",
     }
 
     try:
@@ -53,7 +54,7 @@ def test_directory_endpoint(base_url: str = "http://localhost:8000",
         response = requests.post(
             f"{base_url}/predict_from_directory",
             json=request_data,
-            timeout=120  # Longer timeout for model processing
+            timeout=120,  # Longer timeout for model processing
         )
 
         if response.status_code == 200:
@@ -63,14 +64,14 @@ def test_directory_endpoint(base_url: str = "http://localhost:8000",
             print(f"   Successful: {result['successful_predictions']}")
             print(f"   Failed: {result['failed_predictions']}")
 
-                        # Print details for first few results
-            for i, img_result in enumerate(result['results'][:3]):
-                print(f"   Image {i+1}: {img_result['image_name']}")
+            # Print details for first few results
+            for i, img_result in enumerate(result["results"][:3]):
+                print(f"   Image {i + 1}: {img_result['image_name']}")
                 print(f"     Hands detected: {len(img_result['hands'])}")
 
-                for j, hand in enumerate(img_result['hands']):
-                    hand_type = "Right" if hand['is_right_hand'] else "Left"
-                    print(f"       Hand {j+1}: {hand_type} hand")
+                for j, hand in enumerate(img_result["hands"]):
+                    hand_type = "Right" if hand["is_right_hand"] else "Left"
+                    print(f"       Hand {j + 1}: {hand_type} hand")
                     print(f"         Vertices: {len(hand['vertices'])} points")
                     print(f"         Joints: {len(hand['joints'])} points")
 
@@ -93,8 +94,10 @@ def test_directory_endpoint(base_url: str = "http://localhost:8000",
         return False
 
 
-def test_image_list_endpoint(base_url: str = "http://localhost:8000",
-                           test_image_path: str = "./hamer/example_data/test1.jpg"):
+def test_image_list_endpoint(
+    base_url: str = "http://localhost:8000",
+    test_image_path: str = "example_data/test1.jpg",
+):
     """Test the image list prediction endpoint"""
     print("🖼️ Testing image list endpoint...")
 
@@ -107,7 +110,7 @@ def test_image_list_endpoint(base_url: str = "http://localhost:8000",
     try:
         with open(test_image_path, "rb") as f:
             image_data = f.read()
-            image_b64 = base64.b64encode(image_data).decode('utf-8')
+            image_b64 = base64.b64encode(image_data).decode("utf-8")
     except Exception as e:
         print(f"❌ Failed to encode image: {e}")
         return False
@@ -116,7 +119,7 @@ def test_image_list_endpoint(base_url: str = "http://localhost:8000",
         "images_base64": [image_b64],
         "image_names": [Path(test_image_path).name],
         "rescale_factor": 2.0,
-        "body_detector": "vitdet"
+        "body_detector": "vitdet",
     }
 
     try:
@@ -124,7 +127,7 @@ def test_image_list_endpoint(base_url: str = "http://localhost:8000",
         response = requests.post(
             f"{base_url}/predict_from_images",
             json=request_data,
-            timeout=120  # Longer timeout for model processing
+            timeout=120,  # Longer timeout for model processing
         )
 
         if response.status_code == 200:
@@ -135,14 +138,14 @@ def test_image_list_endpoint(base_url: str = "http://localhost:8000",
             print(f"   Failed: {result['failed_predictions']}")
 
             # Print details for the result
-            if result['results']:
-                img_result = result['results'][0]
+            if result["results"]:
+                img_result = result["results"][0]
                 print(f"   Image: {img_result['image_name']}")
                 print(f"     Hands detected: {len(img_result['hands'])}")
 
-                for j, hand in enumerate(img_result['hands']):
-                    hand_type = "Right" if hand['is_right_hand'] else "Left"
-                    print(f"       Hand {j+1}: {hand_type} hand")
+                for j, hand in enumerate(img_result["hands"]):
+                    hand_type = "Right" if hand["is_right_hand"] else "Left"
+                    print(f"       Hand {j + 1}: {hand_type} hand")
                     print(f"         Vertices: {len(hand['vertices'])} points")
                     print(f"         Joints: {len(hand['joints'])} points")
                     print(f"         Confidence: {hand['confidence_score']}")
@@ -168,27 +171,36 @@ def test_image_list_endpoint(base_url: str = "http://localhost:8000",
 
 def validate_prediction_structure(hand_prediction: dict):
     """Validate the structure of a hand prediction"""
-    required_fields = ['vertices', 'joints', 'is_right_hand', 'confidence_score']
+    required_fields = ["vertices", "joints", "is_right_hand", "confidence_score"]
 
     for field in required_fields:
         if field not in hand_prediction:
             return False, f"Missing field: {field}"
 
     # Check vertices structure (should be 778x3)
-    vertices = hand_prediction['vertices']
+    vertices = hand_prediction["vertices"]
     if not isinstance(vertices, list) or len(vertices) != 778:
-        return False, f"Invalid vertices structure: expected 778 points, got {len(vertices)}"
+        return (
+            False,
+            f"Invalid vertices structure: expected 778 points, got {len(vertices)}",
+        )
 
     if len(vertices) > 0 and len(vertices[0]) != 3:
-        return False, f"Invalid vertex dimension: expected 3D points, got {len(vertices[0])}D"
+        return (
+            False,
+            f"Invalid vertex dimension: expected 3D points, got {len(vertices[0])}D",
+        )
 
     # Check joints structure (should be 21x3)
-    joints = hand_prediction['joints']
+    joints = hand_prediction["joints"]
     if not isinstance(joints, list) or len(joints) != 21:
         return False, f"Invalid joints structure: expected 21 points, got {len(joints)}"
 
     if len(joints) > 0 and len(joints[0]) != 3:
-        return False, f"Invalid joint dimension: expected 3D points, got {len(joints[0])}D"
+        return (
+            False,
+            f"Invalid joint dimension: expected 3D points, got {len(joints[0])}D",
+        )
 
     return True, "Valid structure"
 
@@ -207,7 +219,7 @@ def main():
         if test_health_check(base_url):
             break
         if i < max_retries - 1:
-            print(f"   Retrying in 2 seconds... ({i+1}/{max_retries})")
+            print(f"   Retrying in 2 seconds... ({i + 1}/{max_retries})")
             time.sleep(2)
     else:
         print("❌ Server not ready after 60 seconds")
@@ -237,3 +249,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
