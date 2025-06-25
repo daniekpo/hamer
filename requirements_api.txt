@@ -1,0 +1,12 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+numpy
+opencv-python
+torch
+torchvision
+requests
+python-multipart
+
+# Note: HaMeR should be installed separately with:
+# cd hamer && pip install -e .[all]
