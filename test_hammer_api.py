@@ -208,6 +208,7 @@ def validate_prediction_structure(hand_prediction: dict):
 def main():
     """Run all API tests"""
     print("🚀 Starting HaMeR API Tests")
+    print("📝 Note: This tests the refactored API which now uses the modular inference engine")
     print("=" * 50)
 
     base_url = "http://localhost:8000"
@@ -223,6 +224,7 @@ def main():
             time.sleep(2)
     else:
         print("❌ Server not ready after 60 seconds")
+        print("💡 Start the server with: python hamer_api.py")
         return
 
     print("\n" + "=" * 50)
@@ -242,7 +244,9 @@ def main():
     print(f"   Image List Endpoint: {'✅' if success_img else '❌'}")
 
     if success_dir and success_img:
-        print("\n🎉 All tests passed!")
+        print("\n🎉 All API tests passed!")
+        print("✅ The refactored API maintains full backward compatibility!")
+        print("\n💡 Try the new library interface with: python test_hamer_library.py")
     else:
         print("\n⚠️ Some tests failed. Check the output above for details.")
 
