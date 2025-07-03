@@ -34,11 +34,10 @@ except ImportError:
 class HandPrediction:
     """Single hand prediction result"""
     def __init__(self, vertices: List[List[float]], joints: List[List[float]],
-                 is_right_hand: bool, confidence_score: float):
+                 is_right_hand: bool):
         self.vertices = vertices  # 778x3 vertices
         self.joints = joints      # 21x3 joints
         self.is_right_hand = is_right_hand
-        self.confidence_score = confidence_score
 
     def to_dict(self):
         """Convert to dictionary representation"""
@@ -46,40 +45,32 @@ class HandPrediction:
             'vertices': self.vertices,
             'joints': self.joints,
             'is_right_hand': self.is_right_hand,
-            'confidence_score': self.confidence_score
         }
 
 
-class ImagePredictionResult:
+class HandPredictionResult:
     """Prediction result for a single image"""
-    def __init__(self, image_path: Optional[str] = None, image_name: Optional[str] = None,
-                 hands: List[HandPrediction] = None, success: bool = True,
-                 error_message: Optional[str] = None):
-        self.image_path = image_path
+    def __init__(self, image_name: Optional[str] = None,
+                 hands: Optional[List[HandPrediction]] = None):
         self.image_name = image_name
-        self.hands = hands or []
-        self.success = success
-        self.error_message = error_message
+        self.hands = hands
 
     def to_dict(self):
         """Convert to dictionary representation"""
         return {
-            'image_path': self.image_path,
             'image_name': self.image_name,
-            'hands': [hand.to_dict() for hand in self.hands],
-            'success': self.success,
-            'error_message': self.error_message
+            'hands': [hand.to_dict() for hand in self.hands] if self.hands else None,
         }
 
 
-class HaMeRInference:
+class HamerInference:
     """
-    HaMeR inference engine for 3D hand reconstruction
+    Hamer inference engine for 3D hand reconstruction
     """
 
     def __init__(self, device: Optional[str] = None):
         """
-        Initialize the HaMeR inference engine
+        Initialize the Hamer inference engine
 
         Args:
             device: Device to run inference on ('cuda', 'cpu', or None for auto)
@@ -88,33 +79,25 @@ class HaMeRInference:
             torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         )
 
-        # Initialize models to None - they'll be loaded lazily
-        self.hamer_model = None
-        self.model_cfg = None
-        self.detector = None
-        self.keypoint_detector = None
+        print(f"Hamer inference engine initialized on device: {self.device}")
+        print("Loading Hamer models...")
+
+        # Download and load Hamer model immediately
+        download_models(CACHE_DIR_HAMER)
+        self.hamer_model, self.model_cfg = load_hamer(DEFAULT_CHECKPOINT)
+        self.hamer_model = self.hamer_model.to(self.device)
+        self.hamer_model.eval()
+
+        # Setup body detector (default to vitdet)
+        self.detector = self._setup_body_detector('vitdet')
         self._current_detector_type = 'vitdet'
 
-        print(f"HaMeR inference engine initialized on device: {self.device}")
+        # Setup keypoint detector
+        self.keypoint_detector = ViTPoseModel(self.device)
 
-    def _ensure_models_loaded(self):
-        """Lazy loading of models"""
-        if self.hamer_model is None:
-            print("Loading HaMeR models...")
+        print("Hamer models loaded successfully!")
 
-            # Download and load HaMeR model
-            download_models(CACHE_DIR_HAMER)
-            self.hamer_model, self.model_cfg = load_hamer(DEFAULT_CHECKPOINT)
-            self.hamer_model = self.hamer_model.to(self.device)
-            self.hamer_model.eval()
 
-            # Setup body detector (default to vitdet)
-            self.detector = self._setup_body_detector('vitdet')
-
-            # Setup keypoint detector
-            self.keypoint_detector = ViTPoseModel(self.device)
-
-            print("HaMeR models loaded successfully!")
 
     def _setup_body_detector(self, detector_type: str):
         """Setup the body detector (vitdet or regnety)"""
@@ -207,8 +190,6 @@ class HaMeRInference:
         Returns:
             List of HandPrediction objects containing vertices, joints, and metadata
         """
-        self._ensure_models_loaded()
-
         # Detect hands in the image
         boxes, right_flags = self._detect_hands_in_image(img_cv2)
 
@@ -245,10 +226,9 @@ class HaMeRInference:
 
                 # Create prediction object
                 hand_pred = HandPrediction(
-                    vertices=vertices.tolist(),
-                    joints=joints.tolist(),
+                    vertices=vertices,
+                    joints=joints,
                     is_right_hand=is_right_hand,
-                    confidence_score=1.0  # Could be improved with actual confidence scores
                 )
                 hand_predictions.append(hand_pred)
 
@@ -270,22 +250,7 @@ class HaMeRInference:
         except Exception as e:
             raise ValueError(f"Invalid base64 image data: {str(e)}")
 
-    def _process_single_image(self, img_cv2: np.ndarray, image_name: str, rescale_factor: float) -> ImagePredictionResult:
-        """Process a single image and return prediction results"""
-        try:
-            hands = self._predict_hands_from_image(img_cv2, rescale_factor)
-            return ImagePredictionResult(
-                image_name=image_name,
-                hands=hands,
-                success=True
-            )
-        except Exception as e:
-            return ImagePredictionResult(
-                image_name=image_name,
-                hands=[],
-                success=False,
-                error_message=str(e)
-            )
+
 
     def set_body_detector(self, detector_type: str):
         """
@@ -304,11 +269,11 @@ class HaMeRInference:
 
     def predict(self,
                 image_directory: Optional[str] = None,
-                images: Optional[Union[List[str], List[np.ndarray]]] = None,
+                images: Optional[Union[List[str], np.ndarray]] = None,
                 image_names: Optional[List[str]] = None,
                 file_extensions: List[str] = ['*.jpg', '*.png', '*.jpeg'],
                 rescale_factor: float = 2.0,
-                body_detector: str = 'vitdet') -> Dict[str, Any]:
+                body_detector: str = 'vitdet') -> List[HandPredictionResult]:
         """
         Main prediction interface
 
@@ -339,25 +304,13 @@ class HaMeRInference:
         results = []
 
         if image_directory is not None:
-            # Process directory
             results = self._process_directory(image_directory, file_extensions, rescale_factor)
-        else:
-            # Process image list
+        elif images is not None:
             results = self._process_image_list(images, image_names, rescale_factor)
 
-        # Calculate summary statistics
-        total_images = len(results)
-        successful = sum(1 for r in results if r.success)
-        failed = total_images - successful
+        return results
 
-        return {
-            'results': [r.to_dict() for r in results],
-            'total_images': total_images,
-            'successful_predictions': successful,
-            'failed_predictions': failed
-        }
-
-    def _process_directory(self, image_directory: str, file_extensions: List[str], rescale_factor: float) -> List[ImagePredictionResult]:
+    def _process_directory(self, image_directory: str, file_extensions: List[str], rescale_factor: float) -> List[HandPredictionResult]:
         """Process all images in a directory"""
         img_dir = Path(image_directory)
         if not img_dir.exists() or not img_dir.is_dir():
@@ -378,22 +331,20 @@ class HaMeRInference:
                 if img_cv2 is None:
                     raise ValueError(f"Failed to load image: {img_path}")
 
-                result = self._process_single_image(img_cv2, img_path.name, rescale_factor)
-                result.image_path = str(img_path)
+                hands = self._predict_hands_from_image(img_cv2, rescale_factor)
+                result =  HandPredictionResult(
+                    image_name=img_path.name,
+                    hands=hands
+                )
+
                 results.append(result)
 
             except Exception as e:
-                results.append(ImagePredictionResult(
-                    image_path=str(img_path),
-                    image_name=img_path.name,
-                    hands=[],
-                    success=False,
-                    error_message=str(e)
-                ))
+                continue
 
         return results
 
-    def _process_image_list(self, images: List[Union[str, np.ndarray]], image_names: Optional[List[str]], rescale_factor: float) -> List[ImagePredictionResult]:
+    def _process_image_list(self, images: Union[List[str], np.ndarray], image_names: Optional[List[str]], rescale_factor: float) -> List[HandPredictionResult]:
         """Process a list of images (paths, base64 strings, or numpy arrays)"""
         if image_names and len(image_names) != len(images):
             raise ValueError("Number of image names must match number of images")
@@ -419,58 +370,18 @@ class HaMeRInference:
                 else:
                     raise ValueError(f"Unsupported image type: {type(image)}")
 
-                result = self._process_single_image(img_cv2, image_name, rescale_factor)
+                hands = self._predict_hands_from_image(img_cv2, rescale_factor)
+                result = HandPredictionResult(
+                    image_name=image_name,
+                    hands=hands
+                )
+
                 results.append(result)
 
             except Exception as e:
-                results.append(ImagePredictionResult(
+                results.append(HandPredictionResult(
                     image_name=image_name,
-                    hands=[],
-                    success=False,
-                    error_message=str(e)
+                    hands=None
                 ))
 
         return results
-
-
-# Global inference engine instance for convenient access
-_global_inference_engine = None
-
-def get_inference_engine(device: Optional[str] = None) -> HaMeRInference:
-    """Get or create the global inference engine"""
-    global _global_inference_engine
-    if _global_inference_engine is None:
-        _global_inference_engine = HaMeRInference(device=device)
-    return _global_inference_engine
-
-def predict(image_directory: Optional[str] = None,
-            images: Optional[Union[List[str], List[np.ndarray]]] = None,
-            image_names: Optional[List[str]] = None,
-            file_extensions: List[str] = ['*.jpg', '*.png', '*.jpeg'],
-            rescale_factor: float = 2.0,
-            body_detector: str = 'vitdet',
-            device: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Convenient prediction function using the global inference engine
-
-    Args:
-        image_directory: Path to directory containing images
-        images: List of image paths, base64 encoded strings, or numpy arrays
-        image_names: Optional list of image names (for base64/array inputs)
-        file_extensions: File extensions to process (for directory input)
-        rescale_factor: Rescaling factor for processing
-        body_detector: Body detector type ('vitdet' or 'regnety')
-        device: Device to run inference on ('cuda', 'cpu', or None for auto)
-
-    Returns:
-        Dictionary with results, total_images, successful_predictions, failed_predictions
-    """
-    engine = get_inference_engine(device=device)
-    return engine.predict(
-        image_directory=image_directory,
-        images=images,
-        image_names=image_names,
-        file_extensions=file_extensions,
-        rescale_factor=rescale_factor,
-        body_detector=body_detector
-    )

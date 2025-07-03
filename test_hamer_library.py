@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 # Import the HaMeR inference library
-from hamer.inference import predict, HaMeRInference
+from hamer.inference import predict, HamerInference
 
 
 def test_directory_inference():
@@ -115,7 +115,7 @@ def test_inference_engine_class():
 
     try:
         # Create inference engine
-        engine = HaMeRInference(device='cuda' if True else 'cpu')  # Auto-detect device
+        engine = HamerInference(device='cuda' if True else 'cpu')  # Auto-detect device
 
         # Test with image list
         result = engine.predict(

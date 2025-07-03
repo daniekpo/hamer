@@ -21,7 +21,7 @@ def example_library_usage():
     print("=" * 50)
 
     # Import the HaMeR inference module
-    from hamer.inference import predict, HaMeRInference
+    from hamer.inference import predict, HamerInference
 
     # Example 1: Process a directory of images
     print("\n1️⃣ Processing a directory of images:")
@@ -88,7 +88,7 @@ def example_library_usage():
     print("\n4️⃣ Using HaMeRInference class for advanced usage:")
     try:
         # Create inference engine with specific device
-        engine = HaMeRInference(device='cuda')  # or 'cpu'
+        engine = HamerInference(device='cuda')  # or 'cpu'
 
         # Change body detector
         engine.set_body_detector('vitdet')

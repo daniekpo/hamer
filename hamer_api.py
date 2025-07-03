@@ -14,7 +14,7 @@ from pydantic import BaseModel
 import uvicorn
 
 # Import the new inference module
-from hamer.inference import HaMeRInference, HandPrediction as InferenceHandPrediction, ImagePredictionResult as InferenceImagePredictionResult
+from hamer.inference import HamerInference
 
 # Global inference engine
 inference_engine = None
@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
     print("Initializing HaMeR inference engine...")
 
     # Initialize the inference engine (models will be loaded lazily)
-    inference_engine = HaMeRInference()
+    inference_engine = HamerInference()
 
     print("HaMeR API ready!")
 
@@ -89,26 +89,6 @@ class PredictionResponse(BaseModel):
     failed_predictions: int
 
 
-def convert_inference_result_to_api_model(inference_result: InferenceImagePredictionResult) -> ImagePredictionResult:
-    """Convert inference result to API model"""
-    hands = []
-    for hand in inference_result.hands:
-        hands.append(HandPrediction(
-            vertices=hand.vertices,
-            joints=hand.joints,
-            is_right_hand=hand.is_right_hand,
-            confidence_score=hand.confidence_score
-        ))
-
-    return ImagePredictionResult(
-        image_path=inference_result.image_path,
-        image_name=inference_result.image_name,
-        hands=hands,
-        success=inference_result.success,
-        error_message=inference_result.error_message
-    )
-
-
 @app.post("/predict_from_directory", response_model=PredictionResponse)
 async def predict_from_directory(request: DirectoryRequest):
     """
@@ -137,15 +117,24 @@ async def predict_from_directory(request: DirectoryRequest):
         # Convert results to API models
         api_results = []
         for inference_result_dict in result['results']:
-            # Convert dict back to inference objects temporarily for conversion
-            inference_result = InferenceImagePredictionResult(
+            # Convert directly from dict to API model
+            hands = []
+            for hand_dict in inference_result_dict['hands']:
+                hands.append(HandPrediction(
+                    vertices=hand_dict['vertices'],
+                    joints=hand_dict['joints'],
+                    is_right_hand=hand_dict['is_right_hand'],
+                    confidence_score=hand_dict['confidence_score']
+                ))
+
+            api_result = ImagePredictionResult(
                 image_path=inference_result_dict['image_path'],
                 image_name=inference_result_dict['image_name'],
-                hands=[InferenceHandPrediction(**hand_dict) for hand_dict in inference_result_dict['hands']],
+                hands=hands,
                 success=inference_result_dict['success'],
                 error_message=inference_result_dict['error_message']
             )
-            api_results.append(convert_inference_result_to_api_model(inference_result))
+            api_results.append(api_result)
 
         return PredictionResponse(
             results=api_results,
@@ -191,15 +180,24 @@ async def predict_from_images(request: ImageListRequest):
         # Convert results to API models
         api_results = []
         for inference_result_dict in result['results']:
-            # Convert dict back to inference objects temporarily for conversion
-            inference_result = InferenceImagePredictionResult(
+            # Convert directly from dict to API model
+            hands = []
+            for hand_dict in inference_result_dict['hands']:
+                hands.append(HandPrediction(
+                    vertices=hand_dict['vertices'],
+                    joints=hand_dict['joints'],
+                    is_right_hand=hand_dict['is_right_hand'],
+                    confidence_score=hand_dict['confidence_score']
+                ))
+
+            api_result = ImagePredictionResult(
                 image_path=inference_result_dict['image_path'],
                 image_name=inference_result_dict['image_name'],
-                hands=[InferenceHandPrediction(**hand_dict) for hand_dict in inference_result_dict['hands']],
+                hands=hands,
                 success=inference_result_dict['success'],
                 error_message=inference_result_dict['error_message']
             )
-            api_results.append(convert_inference_result_to_api_model(inference_result))
+            api_results.append(api_result)
 
         return PredictionResponse(
             results=api_results,
