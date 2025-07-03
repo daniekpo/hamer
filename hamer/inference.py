@@ -14,12 +14,14 @@ import warnings
 import cv2
 import numpy as np
 import torch
+from tqdm import tqdm
 
 from hamer.configs import CACHE_DIR_HAMER
 from hamer.models import HAMER, download_models, load_hamer, DEFAULT_CHECKPOINT
 from hamer.utils import recursive_to
 from hamer.datasets.vitdet_dataset import ViTDetDataset
 from hamer.utils.renderer import cam_crop_to_full
+from hamer.utils.suppress_output import suppress_output
 
 # Import vitpose_model from the project root (not part of the installed package)
 import sys
@@ -68,13 +70,15 @@ class HamerInference:
     Hamer inference engine for 3D hand reconstruction
     """
 
-    def __init__(self, device: Optional[str] = None):
+    def __init__(self, device: Optional[str] = None, batch_size: int = 8, suppress_warnings: bool = False):
         """
         Initialize the Hamer inference engine
 
         Args:
             device: Device to run inference on ('cuda', 'cpu', or None for auto)
         """
+        self.suppress_warnings = suppress_warnings
+        self.batch_size = batch_size
         self.device = torch.device(device) if device else (
             torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         )
@@ -84,7 +88,9 @@ class HamerInference:
 
         # Download and load Hamer model immediately
         download_models(CACHE_DIR_HAMER)
-        self.hamer_model, self.model_cfg = load_hamer(DEFAULT_CHECKPOINT)
+
+        with suppress_output(stdout=self.suppress_warnings, stderr=self.suppress_warnings):
+            self.hamer_model, self.model_cfg = load_hamer(DEFAULT_CHECKPOINT) # ignore Warning: using a MANO model with
         self.hamer_model = self.hamer_model.to(self.device)
         self.hamer_model.eval()
 
@@ -93,7 +99,8 @@ class HamerInference:
         self._current_detector_type = 'vitdet'
 
         # Setup keypoint detector
-        self.keypoint_detector = ViTPoseModel(self.device)
+        with suppress_output(stdout=self.suppress_warnings, stderr=self.suppress_warnings):
+            self.keypoint_detector = ViTPoseModel(self.device) # ignore big dump of warnings
 
         print("Hamer models loaded successfully!")
 
@@ -191,21 +198,23 @@ class HamerInference:
             List of HandPrediction objects containing vertices, joints, and metadata
         """
         # Detect hands in the image
-        boxes, right_flags = self._detect_hands_in_image(img_cv2)
+        with suppress_output(stdout=self.suppress_warnings, stderr=self.suppress_warnings):
+            boxes, right_flags = self._detect_hands_in_image(img_cv2)
 
         if len(boxes) == 0:
             return []
 
         # Run reconstruction on all detected hands
         dataset = ViTDetDataset(self.model_cfg, img_cv2, boxes, right_flags, rescale_factor=rescale_factor)
-        dataloader = torch.utils.data.DataLoader(dataset, batch_size=8, shuffle=False, num_workers=0)
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, shuffle=False, num_workers=0)
 
         hand_predictions = []
 
         for batch in dataloader:
             batch = recursive_to(batch, self.device)
             with torch.no_grad():
-                output = self.hamer_model(batch)
+                with suppress_output(stdout=self.suppress_warnings, stderr=self.suppress_warnings):
+                    output = self.hamer_model(batch)
 
             # Extract predictions
             batch_size = batch['img'].shape[0]
@@ -350,7 +359,7 @@ class HamerInference:
             raise ValueError("Number of image names must match number of images")
 
         results = []
-        for i, image in enumerate(images):
+        for i, image in tqdm(enumerate(images), desc="Predicting hands", total=len(images)):
             image_name = image_names[i] if image_names else f"image_{i}"
 
             try:
